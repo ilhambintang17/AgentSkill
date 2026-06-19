@@ -124,6 +124,11 @@ For each slide:
 
 **Use the Edit tool, not sed or Python scripts.** The Edit tool forces specificity about what to replace and where, yielding better reliability.
 
+**CRITICAL FOR LLM AGENTS (Search & XML Escaping):**
+1. **Search First:** Slide XML files can be large. ALWAYS use `grep_search` to find the exact line containing the text you want to edit before using `view_file` to read the context.
+2. **Special Characters:** When replacing text inside `<a:t>`, you MUST manually escape special characters in your new text: `&` becomes `&amp;`, `<` becomes `&lt;`, `>` becomes `&gt;`. Failure to do this will corrupt the XML.
+3. **Global Replace:** Do not use the Edit tool for global find-and-replace across dozens of slides. For global replacements, write a quick Python script using `xml.etree` or regex to process the unpacked XML safely.
+
 ### Formatting Rules
 
 - **Bold all headers, subheadings, and inline labels**: Use `b="1"` on `<a:rPr>`. This includes:

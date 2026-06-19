@@ -120,17 +120,20 @@ size: {
 
 Use Arial as the default font (universally supported). Keep titles black for readability.
 
+**CRITICAL: Always set `color: "000000"` on heading styles.** Without explicit color, Word/LibreOffice/OnlyOffice apply their default theme colors (typically blue), making the document look unprofessional or AI-generated. Also set color on the document default run style.
+
 ```javascript
 const doc = new Document({
   styles: {
-    default: { document: { run: { font: "Arial", size: 24 } } }, // 12pt default
+    default: { document: { run: { font: "Arial", size: 24, color: "000000" } } }, // 12pt default, BLACK
     paragraphStyles: [
       // IMPORTANT: Use exact IDs to override built-in styles
+      // IMPORTANT: Always include color: "000000" to prevent blue/themed heading colors
       { id: "Heading1", name: "Heading 1", basedOn: "Normal", next: "Normal", quickFormat: true,
-        run: { size: 32, bold: true, font: "Arial" },
+        run: { size: 32, bold: true, font: "Arial", color: "000000" },
         paragraph: { spacing: { before: 240, after: 240 }, outlineLevel: 0 } }, // outlineLevel required for TOC
       { id: "Heading2", name: "Heading 2", basedOn: "Normal", next: "Normal", quickFormat: true,
-        run: { size: 28, bold: true, font: "Arial" },
+        run: { size: 28, bold: true, font: "Arial", color: "000000" },
         paragraph: { spacing: { before: 180, after: 180 }, outlineLevel: 1 } },
     ]
   },
@@ -385,16 +388,45 @@ sections: [{
 - **Never use `\n`** - use separate Paragraph elements
 - **Never use unicode bullets** - use `LevelFormat.BULLET` with numbering config
 - **PageBreak must be in Paragraph** - standalone creates invalid XML
+- **PageBreak creates blank pages if placed wrong** - never put `new Paragraph({ children: [new PageBreak()] })` as the first child of a section or immediately after another PageBreak. Use `pageBreakBefore: true` on the next content paragraph instead, or use separate sections with `SectionType.NEXT_PAGE` to control page flow
 - **ImageRun requires `type`** - always specify png/jpg/etc
+- **Always set `color: "000000"` on heading styles** - without explicit black color, headings render in blue or other theme colors in Word/LibreOffice/OnlyOffice. Set color in both the style definition AND the document default run style
 - **Always set table `width` with DXA** - never use `WidthType.PERCENTAGE` (breaks in Google Docs)
 - **Tables need dual widths** - `columnWidths` array AND cell `width`, both must match
 - **Table width = sum of columnWidths** - for DXA, ensure they add up exactly
 - **Always add cell margins** - use `margins: { top: 80, bottom: 80, left: 120, right: 120 }` for readable padding
 - **Use `ShadingType.CLEAR`** - never SOLID for table shading
 - **Never use tables as dividers/rules** - cells have minimum height and render as empty boxes (including in headers/footers); use `border: { bottom: { style: BorderStyle.SINGLE, size: 6, color: "2E75B6", space: 1 } }` on a Paragraph instead. For two-column footers, use tab stops (see Tab Stops section), not tables
+- **Never build a Table of Contents with manual dots** - manual dot strings (e.g., `"DAFTAR ISI ......."`) break across lines and render incorrectly. Use `PositionalTab` with `PositionalTabLeader.DOT` for proper dot leaders, or use `TableOfContents` for auto-generated TOC
 - **TOC requires HeadingLevel only** - no custom styles on heading paragraphs
 - **Override built-in styles** - use exact IDs: "Heading1", "Heading2", etc.
 - **Include `outlineLevel`** - required for TOC (0 for H1, 1 for H2, etc.)
+
+### Manual Table of Contents with Dot Leaders
+
+When building a manual TOC (not auto-generated), use `PositionalTab` for proper dot leaders that adapt to page width:
+
+```javascript
+// CORRECT: Dot leader using PositionalTab
+new Paragraph({
+  children: [
+    new TextRun("BAB 1. PENDAHULUAN"),
+    new TextRun({
+      children: [
+        new PositionalTab({
+          alignment: PositionalTabAlignment.RIGHT,
+          relativeTo: PositionalTabRelativeTo.MARGIN,
+          leader: PositionalTabLeader.DOT,
+        }),
+        "1",
+      ]
+    }),
+  ]
+})
+
+// WRONG: Manual dots break across lines
+new Paragraph({ children: [new TextRun("BAB 1. PENDAHULUAN ........................... 1")] })
+```
 
 ---
 
@@ -412,11 +444,20 @@ Extracts XML, pretty-prints, merges adjacent runs, and converts smart quotes to 
 
 Edit files in `unpacked/word/`. See XML Reference below for patterns.
 
+**CRITICAL FOR LLM AGENTS:** `document.xml` is often too large to load entirely into context.
+1. **Search First:** ALWAYS use `grep_search` to find the exact text you want to edit.
+2. **Read Context:** Note the line numbers, then use `view_file` to read the surrounding XML context (to ensure you don't break tags).
+3. **Edit Directly:** Use the Edit tool (e.g., `replace_file_content`) to modify the XML directly based on the exact lines you viewed.
+
 **Use "Claude" as the author** for tracked changes and comments, unless the user explicitly requests use of a different name.
 
-**Use the Edit tool directly for string replacement. Do not write Python scripts.** Scripts introduce unnecessary complexity. The Edit tool shows exactly what is being replaced.
+**Use the Edit tool directly for targeted string replacement.** Do not write Python scripts for simple targeted edits. HOWEVER, for GLOBAL find-and-replace across a large document (e.g., changing a company name 200 times), write a quick Python script using `xml.etree` or regex to process `document.xml` safely to avoid context window limits and tool timeouts.
 
-**CRITICAL: Use smart quotes for new content.** When adding text with apostrophes or quotes, use XML entities to produce smart quotes:
+**CRITICAL: XML Escaping & Formatting Rules:**
+- **Special Characters:** When replacing text inside `<w:t>`, you MUST manually escape special characters in your new text: `&` becomes `&amp;`, `<` becomes `&lt;`, `>` becomes `&gt;`. Failure to do this will corrupt the XML.
+- **Line Breaks:** Do NOT use `\n` in replacement strings to add line breaks. It will not render. Insert `<w:br/>` tags instead (e.g., `<w:t>Line 1</w:t><w:br/><w:t>Line 2</w:t>`).
+- **Whitespace:** If you add leading or trailing spaces to text (e.g., changing `<w:t>Word</w:t>` to `<w:t> Word </w:t>`), you MUST add `xml:space="preserve"` to the tag: `<w:t xml:space="preserve"> Word </w:t>`.
+- **Smart Quotes:** When adding text with apostrophes or quotes, use XML entities:
 ```xml
 <!-- Use these entities for professional typography -->
 <w:t>Here&#x2019;s a quote: &#x201C;Hello&#x201D;</w:t>

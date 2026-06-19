@@ -10,7 +10,25 @@ license: Proprietary. LICENSE.txt has complete terms
 
 This guide covers essential PDF processing operations using Python libraries and command-line tools. For advanced features, JavaScript libraries, and detailed examples, see REFERENCE.md. If you need to fill out a PDF form, read FORMS.md and follow its instructions.
 
+## Prerequisites
+
+Install required libraries before use. These may not be pre-installed:
+
+```bash
+# Try standard pip first; if PEP 668 blocks it, use --break-system-packages
+pip install pypdf pdfplumber 2>/dev/null || pip install --break-system-packages pypdf pdfplumber
+```
+
+**Fallback for text extraction** if Python libraries are unavailable:
+```bash
+# pdftotext is often pre-installed via poppler-utils
+pdftotext -layout input.pdf output.txt
+```
+
+
 ## Quick Start
+
+**CRITICAL FOR LLM AGENTS (Executing Python):** To use the Python snippets in this guide, you MUST write them to a temporary file (e.g., `scratch/process_pdf.py`) using your file writing tools, and then execute the file using the terminal tool. Do not try to execute code blocks directly.
 
 ```python
 from pypdf import PdfReader, PdfWriter
@@ -189,6 +207,11 @@ For canvas-drawn text (not Paragraph objects), manually adjust font the size and
 ## Command-Line Tools
 
 ### pdftotext (poppler-utils)
+
+**CRITICAL FOR LLM AGENTS (Context Window Limit):** Extracting text from a large PDF will create a massive `output.txt` file. NEVER read the entire file using `view_file` as it will exceed your context limit. Instead, either:
+1. Extract only specific pages using `-f` (first) and `-l` (last) flags.
+2. ALWAYS use `grep_search` on the resulting `output.txt` to find specific information.
+
 ```bash
 # Extract text
 pdftotext input.pdf output.txt

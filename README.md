@@ -87,5 +87,12 @@ This collection of skills is designed for use by AI agents that support "Skill/T
 
 Each folder contains a `SKILL.md` file (and necessary helper scripts) with comprehensive instructions and documentation for handling specific tasks.
 
+### 🛡️ Built-in LLM Guardrails
+All office and document skills (`docx`, `pdf`, `pptx`, `xlsx`) have been carefully optimized for autonomous AI execution. The documentation includes explicit safeguards against common LLM pitfalls:
+- **Context Window Protection:** Agents are instructed to use search tools (`grep_search`) instead of reading massive extracted text files directly.
+- **XML/Data Corruption Prevention:** Strict instructions on XML escaping (`&amp;`, `&lt;`) and safe find-and-replace strategies.
+- **Execution Safety:** Guidelines on writing out Python snippets to temporary files rather than attempting direct inline execution.
+- **Visual Validation:** For tasks like PDF form filling, agents are forced to generate visual bounding boxes to verify coordinates before writing to the file, preventing coordinate hallucination.
+
 ---
 *Built to accelerate and enhance the quality of AI Assistant workflows.*

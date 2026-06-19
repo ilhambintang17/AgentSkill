@@ -75,6 +75,10 @@ A user may ask you to create, edit, or analyze the contents of an .xlsx file. Yo
 
 ## Reading and analyzing data
 
+**CRITICAL FOR LLM AGENTS (Context Window Limit):** Excel files can contain tens of thousands of rows. NEVER read the entire `extract-text` output or dump a full pandas DataFrame to the console/file and read it with `view_file`.
+1. For text dumps, ALWAYS use `grep_search` to find specific rows.
+2. For pandas, ALWAYS use `.head()`, `.tail()`, `.info()`, or targeted queries (`df[df['col'] == 'val']`) to inspect data incrementally.
+
 ### Quick text dump
 ```bash
 # Tab-separated rows under `## Sheet:` headers
@@ -287,6 +291,8 @@ The script returns JSON with error details:
 - Specify data types to avoid inference issues: `pd.read_excel('file.xlsx', dtype={'id': str})`
 - For large files, read specific columns: `pd.read_excel('file.xlsx', usecols=['A', 'C', 'E'])`
 - Handle dates properly: `pd.read_excel('file.xlsx', parse_dates=['date_column'])`
+
+**CRITICAL FOR LLM AGENTS (Executing Python):** To use the Python snippets in this guide, you MUST write them to a temporary file (e.g., `scratch/process_excel.py`) using your file writing tools, and then execute the file using the terminal tool. Do not try to execute code blocks directly.
 
 ## Code Style Guidelines
 **IMPORTANT**: When generating Python code for Excel operations:

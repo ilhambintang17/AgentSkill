@@ -1,5 +1,12 @@
 **CRITICAL: You MUST complete these steps in order. Do not skip ahead to writing code.**
 
+> [!WARNING]
+> **CRITICAL COORDINATE SYSTEM TRAP FOR LLM AGENTS**
+> Pay extreme attention to the Y-axis coordinate system, as it changes depending on the approach:
+> - **Fillable Fields (Extracted via script):** `y=0` is at the **BOTTOM** of the page (increases upwards).
+> - **Non-Fillable Fields (Approach A & B):** `y=0` is at the **TOP** of the page (increases downwards).
+> Mixing these up will cause your annotations to be drawn completely off-target. Always double-check which coordinate system you are currently using.
+
 If you need to fill out a PDF form, first check to see if the PDF has fillable form fields. Run this script from this file's directory:
  `python scripts/check_fillable_fields <file.pdf>`, and depending on the result go to either the "Fillable fields" or "Non-fillable fields" and follow those instructions.
 
@@ -244,12 +251,15 @@ Create fields.json using `image_width` and `image_height` (signals image coordin
 
 **Important**: Use `image_width`/`image_height` and the refined pixel coordinates from the zoom analysis.
 
-### B.5: Validate Bounding Boxes
+### B.5: Validate Bounding Boxes Visually (CRITICAL FOR LLMS)
 
-Before filling, check your bounding boxes for errors:
-`python scripts/check_bounding_boxes.py fields.json`
+Since LLMs are prone to hallucinating exact pixel coordinates, you **MUST** visually validate your guesses before proceeding.
 
-This checks for intersecting bounding boxes and entry boxes that are too small for the font size. Fix any reported errors before filling.
+1. First, run the standard bounding box check:
+   `python scripts/check_bounding_boxes.py fields.json`
+2. Then, generate a visual validation image:
+   `python scripts/create_validation_image.py <input.pdf> fields.json <output_dir>`
+3. Use `view_file` to look at the generated images in `<output_dir>`. Check if the red bounding boxes actually align with the form fields. If they are misaligned, adjust your coordinates in `fields.json` and repeat this validation step.
 
 ---
 

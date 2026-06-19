@@ -18,6 +18,8 @@ license: Proprietary. LICENSE.txt has complete terms
 
 ## Reading Content
 
+**CRITICAL FOR LLM AGENTS (Context Window Limit):** When extracting text from a large presentation, the output can be massive. NEVER read the entire extracted output using `view_file`. Instead, ALWAYS use `grep_search` on the extracted text to find specific information.
+
 ```bash
 # Text extraction, one `## Slide N` section per slide
 extract-text presentation.pptx
