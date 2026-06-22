@@ -14,7 +14,7 @@ A .docx file is a ZIP archive containing XML files.
 
 | Task | Approach |
 |------|----------|
-| Read/analyze content | `extract-text`, or unpack for raw XML |
+| Read/analyze content | `python scripts/extract_text.py`, or unpack for raw XML |
 | Create new document | Use `docx-js` - see Creating New Documents below |
 | Edit existing document | Unpack → edit XML → repack - see Editing Existing Documents below |
 
@@ -29,10 +29,10 @@ python scripts/office/soffice.py --headless --convert-to docx document.doc
 ### Reading Content
 
 ```bash
-# Text extraction as markdown
-extract-text document.docx
+# Text extraction using provided python script
+python scripts/extract_text.py document.docx > output.txt
 
-# Show tracked changes instead of accepting them
+# Show tracked changes instead of accepting them (requires pandoc)
 pandoc --track-changes=all document.docx -o output.md
 
 # Raw XML access
@@ -597,26 +597,46 @@ After running `comment.py` (see Step 2), add markers to document.xml. For replie
 <w:r><w:rPr><w:rStyle w:val="CommentReference"/></w:rPr><w:commentReference w:id="1"/></w:r>
 ```
 
-### Images
+### Images & Fixing Broken Markdown Converters
 
+Markdown-to-DOCX converters (like `md-to-docx`, `markdown-to-docx`) often fail to embed local images and instead output plain text like `[Image could not be displayed: ...]`. Also, installing `python-docx` via `pip` often fails in network-restricted sandboxes.
+
+To inject or fix a broken image, use standard Python libraries (`xml.etree.ElementTree`, `zipfile`, `shutil`) to unpack, edit the XML, and repack.
+
+**Step-by-step XML Injection:**
 1. Add image file to `word/media/`
-2. Add relationship to `word/_rels/document.xml.rels`:
-```xml
-<Relationship Id="rId5" Type=".../image" Target="media/image1.png"/>
-```
-3. Add content type to `[Content_Types].xml`:
+2. Add content type to `[Content_Types].xml`:
 ```xml
 <Default Extension="png" ContentType="image/png"/>
 ```
-4. Reference in document.xml:
+3. Add relationship to `word/_rels/document.xml.rels`:
+```xml
+<Relationship Id="rId999" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/image1.png"/>
+```
+4. Reference in `word/document.xml`. **CRITICAL**: Ensure `xmlns:a` and `xmlns:pic` are declared (either at the root `<w:document>` or directly on the `<a:graphic>` and `<pic:pic>` tags).
 ```xml
 <w:drawing>
-  <wp:inline>
-    <wp:extent cx="914400" cy="914400"/>  <!-- EMUs: 914400 = 1 inch -->
-    <a:graphic>
-      <a:graphicData uri=".../picture">
-        <pic:pic>
-          <pic:blipFill><a:blip r:embed="rId5"/></pic:blipFill>
+  <wp:inline distT="0" distB="0" distL="0" distR="0">
+    <wp:extent cx="5900000" cy="4000000"/> <!-- EMUs: 914400 = 1 inch -->
+    <wp:effectExtent l="0" t="0" r="0" b="0"/>
+    <wp:docPr id="1" name="Picture 1"/>
+    <wp:cNvGraphicFramePr><a:graphicFrameLocks noChangeAspect="1"/></wp:cNvGraphicFramePr>
+    <!-- CRITICAL: Declare namespaces if not at document root -->
+    <a:graphic xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">
+      <a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture">
+        <pic:pic xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture">
+          <pic:nvPicPr>
+            <pic:cNvPr id="0" name="image1.png"/>
+            <pic:cNvPicPr/>
+          </pic:nvPicPr>
+          <pic:blipFill>
+            <a:blip r:embed="rId999"/>
+            <a:stretch><a:fillRect/></a:stretch>
+          </pic:blipFill>
+          <pic:spPr>
+            <a:xfrm><a:off x="0" y="0"/><a:ext cx="5900000" cy="4000000"/></a:xfrm>
+            <a:prstGeom prst="rect"><a:avLst/></a:prstGeom>
+          </pic:spPr>
         </pic:pic>
       </a:graphicData>
     </a:graphic>
@@ -624,11 +644,46 @@ After running `comment.py` (see Step 2), add markers to document.xml. For replie
 </w:drawing>
 ```
 
+**Python Automation Script Example:**
+If an image fails to render from a markdown conversion, unpack the `.docx` and use a script like this instead of relying on `pip install`:
+```python
+import os, shutil, re
+import xml.etree.ElementTree as ET
+
+os.makedirs('unpacked/word/media', exist_ok=True)
+shutil.copy('image.png', 'unpacked/word/media/image1.png')
+
+# 1. Content Types
+ns_ct = "http://schemas.openxmlformats.org/package/2006/content-types"
+ET.register_namespace("", ns_ct)
+tree_ct = ET.parse('unpacked/[Content_Types].xml')
+if not any(el.attrib.get('Extension') == 'png' for el in tree_ct.getroot().findall(f'{{{ns_ct}}}Default')):
+    ET.SubElement(tree_ct.getroot(), f'{{{ns_ct}}}Default', Extension="png", ContentType="image/png")
+tree_ct.write('unpacked/[Content_Types].xml', xml_declaration=True, encoding='UTF-8')
+
+# 2. Relationships
+ns_rels = "http://schemas.openxmlformats.org/package/2006/relationships"
+ET.register_namespace("", ns_rels)
+tree_rels = ET.parse('unpacked/word/_rels/document.xml.rels')
+ET.SubElement(tree_rels.getroot(), f'{{{ns_rels}}}Relationship', Id="rId999", Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image", Target="media/image1.png")
+tree_rels.write('unpacked/word/_rels/document.xml.rels', xml_declaration=True, encoding='UTF-8')
+
+# 3. Document XML (Inject drawing tag)
+with open('unpacked/word/document.xml', 'r', encoding='utf-8') as f:
+    doc_xml = f.read()
+
+# Replace the entire <w:r> containing the broken text with <w:r><w:drawing>...</w:drawing></w:r>
+# doc_xml = re.sub(r'<w:r(?:(?!<w:r>).)*?\[Image could not be displayed.*?</w:r>', '<w:r><w:drawing>...</w:drawing></w:r>', doc_xml, flags=re.DOTALL)
+
+with open('unpacked/word/document.xml', 'w', encoding='utf-8') as f:
+    f.write(doc_xml)
+```
+
 ---
 
 ## Dependencies
 
-- **pandoc**: Text extraction
+- **pandoc**: Text extraction (optional, if installed)
 - **docx**: `npm install -g docx` (new documents)
 - **LibreOffice**: PDF conversion (auto-configured for sandboxed environments via `scripts/office/soffice.py`)
 - **Poppler**: `pdftoppm` for images
