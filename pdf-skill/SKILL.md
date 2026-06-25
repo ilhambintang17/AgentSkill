@@ -204,6 +204,82 @@ squared = Paragraph("x<super>2</super> + y<super>2</super>", styles['Normal'])
 
 For canvas-drawn text (not Paragraph objects), manually adjust font the size and position rather than using Unicode subscripts/superscripts.
 
+#### Advanced Layout, Syntax Highlighting & Preventing Overlaps
+When generating complex reports (e.g., side-by-side code comparisons, cheat sheets):
+1. **Avoid HTML-to-PDF tools** (like headless Chrome) for complex code highlighting, as background colors and JavaScript execution (like Highlight.js) can fail or render inconsistently.
+2. **Use Native ReportLab Tables** for side-by-side layouts. Calculate column widths dynamically (e.g., `landscape(A4)[0] / 2`).
+3. **Prevent Overlaps:** Always use `PageBreak()` or `KeepTogether()` from `reportlab.platypus` to prevent tables and explanations from overlapping or breaking awkwardly across pages.
+4. **Native Syntax Highlighting:** ReportLab's `Paragraph` supports basic HTML (`<font color="#HEX">`, `<b>`, `<i>`). You can write a simple tokenizer using Python's `re.split(r'(\W+)', text)` to manually highlight keywords, types, and comments without needing external CSS.
+5. **CRITICAL: Font Size and Line Height (Leading):** When changing `fontSize` in `ParagraphStyle`, you MUST explicitly set the `leading` (line height) to be roughly `fontSize * 1.2` or higher (e.g., if `fontSize=22`, set `leading=28`). If you increase font size without setting `leading`, wrapped text lines will violently overlap into themselves and into adjacent paragraphs!
+6. **STRICT PAGE CONSTRAINTS:** If the user demands fitting everything into exactly N pages (e.g. "fit everything into 2 pages"):
+   - Radically reduce `fontSize` (e.g. down to 7 or 8 for code) and `leading` (to 8 or 9).
+   - Slash margins (`rightMargin=15`, `leftMargin=15`, `topMargin=10`, `bottomMargin=10`).
+   - Remove `Spacer` objects entirely or reduce their height to 1 or 2 points.
+   - Slash table cell paddings (`TOPPADDING`, `BOTTOMPADDING`, `LEFTPADDING`, `RIGHTPADDING`) to 1 or 2.
+   - Reduce paragraph `spaceBefore` and `spaceAfter` to 0 or 1.
+   - It is significantly harder than it looks to fit dynamic code into a small space, so compress more aggressively than you think is necessary on the first attempt to avoid spilling over into an extra page.
+
+**Example: Side-by-Side Code with Syntax Highlighting**
+```python
+import re
+from reportlab.lib.pagesizes import A4, landscape
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Table, TableStyle, PageBreak
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib import colors
+
+def highlight_code(text):
+    # 1. Escape HTML first!
+    text = text.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+    # 2. Tokenize
+    tokens = re.split(r'(\W+)', text)
+    out = []
+    keywords = {'def', 'import', 'from', 'return', 'if', 'else', 'for', 'while'}
+    in_comment = False
+    
+    for t in tokens:
+        if '\\n' in t: in_comment = False
+        if '#' in t: in_comment = True
+        
+        escaped_t = t.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+        
+        if in_comment or '#' in t:
+            out.append(f'<font color="#008000"><i>{escaped_t}</i></font>')
+        elif t in keywords:
+            out.append(f'<font color="#0000FF"><b>{escaped_t}</b></font>')
+        else:
+            out.append(escaped_t)
+            
+    res = ''.join(out).replace('\\n', '<br/>').replace('    ', '&nbsp;&nbsp;&nbsp;&nbsp;')
+    return res
+
+doc = SimpleDocTemplate("output.pdf", pagesize=landscape(A4))
+styles = getSampleStyleSheet()
+styles.add(ParagraphStyle(name='Code', fontName='Courier', fontSize=10, leading=13))
+
+story = []
+
+# Create highlighted paragraphs
+code1 = highlight_code("def hello():\\n    # Print hello\\n    return 'hello'")
+code2 = highlight_code("def world():\\n    # Print world\\n    return 'world'")
+
+p1 = Paragraph(code1, styles['Code'])
+p2 = Paragraph(code2, styles['Code'])
+
+# Side-by-side Table
+table = Table([[p1, p2]], colWidths=[400, 400])
+table.setStyle(TableStyle([
+    ('BACKGROUND', (0,0), (-1,-1), colors.HexColor("#1e2227")),
+    ('TEXTCOLOR', (0,0), (-1,-1), colors.white),
+    ('VALIGN', (0,0), (-1,-1), 'TOP'),
+    ('GRID', (0,0), (-1,-1), 1, colors.grey)
+]))
+
+story.append(table)
+story.append(PageBreak()) # Prevents overlapping with subsequent content
+
+doc.build(story)
+```
+
 ## Command-Line Tools
 
 ### pdftotext (poppler-utils)
@@ -333,5 +409,6 @@ with open("encrypted.pdf", "wb") as output:
 
 - For advanced pypdfium2 usage, see REFERENCE.md
 - For JavaScript libraries (pdf-lib), see REFERENCE.md
+- For generating PDFs from HTML containing LaTeX/MathJax, see **HTML_TO_PDF.md**
 - If you need to fill out a PDF form, follow the instructions in FORMS.md
 - For troubleshooting guides, see REFERENCE.md
